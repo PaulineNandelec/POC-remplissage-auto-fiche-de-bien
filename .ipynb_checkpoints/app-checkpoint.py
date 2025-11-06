@@ -22,7 +22,7 @@ if not ADEME_TOKEN:
 st.title("Enrichissement automatique fiches de bien")
 
 # --- Saisie de l'adresse ---
-adresse_input = st.text_input("Entrez une adresse :", "12 RUE DE POUL AR BACHET 29200")
+adresse_input = st.text_input("Entrez une adresse :")
 
 if adresse_input:
     # 1. Géocodage via BAN
@@ -31,15 +31,11 @@ if adresse_input:
         st.error(f"Erreur géocodage : {coords['error']}")
         st.stop()
 
-    st.write("**Adresse normalisée :**", coords["adresse_label"])
-    st.write("**Coordonnées :**", coords["latitude"], coords["longitude"])
-
     # 2. DPE par coordonnées
     dpe_coordinates = get_dpe_exact_coordinates(coords["coord_geo_x"], coords["coord_geo_y"], ADEME_TOKEN)
 
     if dpe_coordinates.empty:
         st.warning("Aucun DPE trouvé pour ces coordonnées.")
-        st.stop()
 
     # 3. DVF
     df = pd.read_csv("dvf_ok.csv")
@@ -49,27 +45,69 @@ if adresse_input:
         ['surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain']
     ]
 
-    # 4. Fusion DVF + DPE
-    for col in ['surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain']:
-        unique_vals = df_dvf[col].dropna().unique()
-        if len(unique_vals) == 1:
-            dpe_coordinates[col] = unique_vals[0]
-        elif len(unique_vals) > 1:
-            dpe_coordinates[col] = [unique_vals.tolist()] * len(dpe_coordinates)
-        else:
-            dpe_coordinates[col] = None
-
     # 5. Sélection interactive si plusieurs DPE
     if len(dpe_coordinates) > 1:
-        st.write("Plusieurs DPE trouvés :")
-        st.dataframe(dpe_coordinates[['numero_dpe', 'surface_habitable_logement', 'etiquette_dpe']])
-
+        st.write("Plusieurs DPE trouvés, veuillez affiner votre recherche :")
         choix_surface = st.selectbox(
-            "Sélectionnez la surface habitable pour filtrer :",
-            options=sorted(dpe_coordinates['surface_habitable_logement'].unique())
+            "Sélectionnez la surface habitable logement :",
+            options=sorted(dpe_coordinates['surface_habitable_logement'].dropna().unique())
         )
         dpe_coordinates = dpe_coordinates[dpe_coordinates['surface_habitable_logement'] == choix_surface]
 
-    # 6. Résultats finaux
-    st.subheader("Résultats filtrés")
-    st.dataframe(dpe_coordinates)
+    # 6. Construire final_data avec DVF + DPE
+    final_data = {}
+
+    # Champs DVF
+    for col in ['surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain']:
+        unique_vals = df_dvf[col].dropna().unique()
+        if len(unique_vals) == 1:
+            final_data[col] = {"valeur": unique_vals[0], "source": "DVF"}
+        elif len(unique_vals) > 1:
+            final_data[col] = {"valeur": unique_vals.tolist(), "source": "DVF"}
+        else:
+            final_data[col] = {"valeur": None, "source": "DVF"}
+
+    # Champs DPE
+    for col in dpe_coordinates.columns:
+        # Convertir toutes les valeurs en tuples si ce sont des listes
+        vals = [
+            tuple(v) if isinstance(v, list) else v
+            for v in dpe_coordinates[col].dropna()
+        ]
+
+        # Maintenant .unique() peut fonctionner car tout est hashable
+        unique_vals = pd.Series(vals).unique()
+
+        if len(unique_vals) == 1:
+            # Si c'est un tuple, reconvertir en liste pour l'affichage utilisateur
+            val = list(unique_vals[0]) if isinstance(unique_vals[0], tuple) else unique_vals[0]
+            final_data[col] = {"valeur": val, "source": "DPE"}
+        elif len(unique_vals) > 1:
+            # Reconvertir tous les tuples en listes pour affichage
+            val_list = [list(v) if isinstance(v, tuple) else v for v in unique_vals]
+            final_data[col] = {"valeur": val_list, "source": "DPE"}
+        else:
+            final_data[col] = {"valeur": None, "source": "DPE"}
+
+    # 7. Transformer en DataFrame vertical
+    df_final = pd.DataFrame([
+        {"champ à remplir": champ, "valeur": data["valeur"], "source de donnée": data["source"]}
+        for champ, data in final_data.items()
+    ])
+
+    # 8. Affichage interactif
+    st.subheader("🎯 Résultats à compléter")
+    for idx, row in df_final.iterrows():
+        champ = row["champ à remplir"]
+        valeur = row["valeur"]
+        source = row["source de donnée"]
+
+        if isinstance(valeur, list):
+            choix = st.selectbox(f"{champ} ({source})", options=valeur)
+            df_final.at[idx, "valeur"] = choix
+        else:
+            st.write(f"**{champ} ({source})** : {valeur}")
+
+    # 9. Afficher le tableau final
+    st.write("✅ Données finales :")
+    st.dataframe(df_final)
