@@ -120,5 +120,22 @@ if adresse_input:
             st.write(f"**{champ} ({source})** : {valeur}")
 
     # 9. Afficher le tableau final
-    st.write("✅ Données finales :")
-    st.dataframe(df_final)
+    tab1, tab2, tab3 = st.tabs(["✅ Données finales", "📊 Données DVF", "📄 Données DPE"])
+
+    with tab1:
+        st.subheader("✅ Données finales")
+        st.dataframe(df_final)
+
+    with tab2:
+        st.subheader("📊 Données DVF")
+        if df_dvf.empty:
+            st.warning("Aucune donnée DVF trouvée pour cette adresse.")
+        else:
+            st.dataframe(df_final.loc[df_final['source de donnée'] == 'DVF'])
+
+    with tab3:
+        st.subheader("📄 Données DPE")
+        if dpe_coordinates.empty:
+            st.warning("Aucune donnée DPE trouvée pour ces coordonnées.")
+        else:
+            st.dataframe(df_final.loc[df_final['source de donnée'] == 'DPE'])
