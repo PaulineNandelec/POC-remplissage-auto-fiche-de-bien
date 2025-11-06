@@ -45,14 +45,25 @@ if adresse_input:
         ['surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain']
     ]
 
-    # 5. Sélection interactive si plusieurs DPE
+    # 5. Sélectionner un DPE
+    
     if len(dpe_coordinates) > 1:
         st.write("Plusieurs DPE trouvés, veuillez affiner votre recherche :")
+
+        # Étape 1 : choix de la surface
         choix_surface = st.selectbox(
             "Sélectionnez la surface habitable logement :",
             options=sorted(dpe_coordinates['surface_habitable_logement'].dropna().unique())
         )
         dpe_coordinates = dpe_coordinates[dpe_coordinates['surface_habitable_logement'] == choix_surface]
+
+        # Étape 2 : choix du numéro de DPE si plusieurs avec la même surface
+        if len(dpe_coordinates) > 1:
+            choix_dpe = st.selectbox(
+                "Plusieurs DPE ont la même surface. Sélectionnez le numéro de DPE :",
+                options=dpe_coordinates['numero_dpe'].dropna().unique()
+            )
+            dpe_coordinates = dpe_coordinates[dpe_coordinates['numero_dpe'] == choix_dpe]
 
     # 6. Construire final_data avec DVF + DPE
     final_data = {}
