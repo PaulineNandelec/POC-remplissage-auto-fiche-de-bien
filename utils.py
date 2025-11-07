@@ -51,13 +51,11 @@ def traitement_dvf(df):
     #je supprime les lignes où les valeurs sont égales au nom de la colonne
     mask = df.apply(lambda row: any(row[col] == col for col in df.columns), axis=1)
     df = df[~mask]
-    #je ne garde que les colonnes qui m'intéressent
-    df = df[['id_mutation', 'date_mutation', 'adresse_numero', 'adresse_suffixe', 'adresse_nom_voie', 'adresse_code_voie', 'code_postal', 'nom_commune', 'id_parcelle', 'code_type_local', 'type_local', 'surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain', 'longitude', 'latitude']]
     #je ne garde que les appartements et les maisons
     df = df.loc[(df['code_type_local'] == 1) | (df['code_type_local'] == 2)]
     df = convert_to_int(df)
     df = create_adresse_complete(df)
-    df.drop_duplicates(subset=['adresse_complete', 'id_parcelle', 'type_local', 'surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain', 'longitude', 'latitude'], inplace=True)
+    df.drop_duplicates(subset=['adresse_complete', 'id_parcelle', 'type_local', 'date_mutation', 'longitude', 'latitude'], inplace=True)
     return df
 
 def get_coordinates_from_address(address: str, limit: int = 1):
@@ -181,7 +179,6 @@ def get_dpe_exact_coordinates(x, y, token: str, size: int = 10):
     }
 
     params = {
-        "select": "numero_dpe,adresse_ban,etiquette_dpe,date_etablissement_dpe,date_derniere_modification_dpe,etiquette_ges,conso_5_usages_par_m2_ef,conso_5_usages_par_m2_ep,emission_ges_5_usages_par_m2,annee_construction,type_batiment,nombre_niveau_logement,complement_adresse_logement,surface_habitable_logement,type_installation_chauffage",
         "sort": "date_derniere_modification_dpe",
         "coordonnee_cartographique_x_ban_eq": x,
         "coordonnee_cartographique_y_ban_eq": y,
@@ -199,3 +196,7 @@ def get_dpe_exact_coordinates(x, y, token: str, size: int = 10):
 
     except requests.exceptions.RequestException as e:
         return pd.DataFrame([{"error": str(e)}])
+    
+# 3️⃣ Fonction de surbrillance : mauve si le champ est dans champs_utilises_dpe
+def highlight_used_fields(row, champs_utilises):
+    return ['background-color: #e2d8f3' if row["champ à remplir"] in champs_utilises else '' for _ in row]

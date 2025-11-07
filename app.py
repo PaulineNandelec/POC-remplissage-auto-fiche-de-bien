@@ -7,7 +7,8 @@ from utils import (
     get_id_cadastre_from_coordinates,
     get_dpe_exact_address,
     get_dpe_exact_coordinates,
-    normalize_address
+    normalize_address,
+    highlight_used_fields
 )
 
 # --- Charger la clé ADEME ---
@@ -20,6 +21,7 @@ if not ADEME_TOKEN:
 
 # --- Titre de l'app ---
 st.title("Enrichissement automatique fiches de bien")
+st.write("Remarque: pour ce POC, seules les recherches dans le Finistère sont possibles.")
 
 # --- Saisie de l'adresse ---
 adresse_input = st.text_input("Entrez une adresse :")
@@ -41,11 +43,10 @@ if adresse_input:
     df = pd.read_csv("dvf_ok.csv")
     adresse_clean = normalize_address(coords["adresse_label"])
     df_dvf = df.loc[
-        df['adresse_complete'] == adresse_clean,
-        ['surface_reelle_bati', 'nombre_pieces_principales', 'surface_terrain']
+        df['adresse_complete'] == adresse_clean
     ]
 
-    # 5. Sélectionner un DPE
+    # 4. Sélectionner un DPE
     
     if len(dpe_coordinates) > 1:
         st.write("Plusieurs DPE trouvés, veuillez affiner votre recherche :")
@@ -64,6 +65,18 @@ if adresse_input:
                 options=dpe_coordinates['numero_dpe'].dropna().unique()
             )
             dpe_coordinates = dpe_coordinates[dpe_coordinates['numero_dpe'] == choix_dpe]
+            
+    # 5. Sélectionner un DVF
+    
+    if len(df_dvf) > 1:
+        st.write("Plusieurs transactions trouvées, veuillez affiner votre recherche :")
+
+        # Étape 1 : choix de la surface
+        choix_date_mutation = st.selectbox(
+            "Date de la mutation :",
+            options=sorted(df_dvf['date_mutation'].dropna().unique())
+        )
+        df_dvf = df_dvf[df_dvf['date_mutation'] == choix_date_mutation]
 
     # 6. Construire final_data avec DVF + DPE
     final_data = {}
@@ -79,24 +92,12 @@ if adresse_input:
             final_data[col] = {"valeur": None, "source": "DVF"}
 
     # Champs DPE
-    for col in dpe_coordinates.columns:
-        # Convertir toutes les valeurs en tuples si ce sont des listes
-        vals = [
-            tuple(v) if isinstance(v, list) else v
-            for v in dpe_coordinates[col].dropna()
-        ]
-
-        # Maintenant .unique() peut fonctionner car tout est hashable
-        unique_vals = pd.Series(vals).unique()
-
+    for col in ['numero_dpe','adresse_ban','etiquette_dpe','date_etablissement_dpe','date_derniere_modification_dpe','etiquette_ges','conso_5 usages_par_m2_ef','conso_5_usages_par_m2_ep','emission_ges_5_usages par_m2','annee_construction','type_batiment','nombre_niveau_logement','complement_adresse_logement','surface_habitable_logement','type_installation_chauffage']:
+        unique_vals = dpe_coordinates[col].dropna().unique()
         if len(unique_vals) == 1:
-            # Si c'est un tuple, reconvertir en liste pour l'affichage utilisateur
-            val = list(unique_vals[0]) if isinstance(unique_vals[0], tuple) else unique_vals[0]
-            final_data[col] = {"valeur": val, "source": "DPE"}
+            final_data[col] = {"valeur": unique_vals[0], "source": "DPE"}
         elif len(unique_vals) > 1:
-            # Reconvertir tous les tuples en listes pour affichage
-            val_list = [list(v) if isinstance(v, tuple) else v for v in unique_vals]
-            final_data[col] = {"valeur": val_list, "source": "DPE"}
+            final_data[col] = {"valeur": unique_vals.tolist(), "source": "DPE"}
         else:
             final_data[col] = {"valeur": None, "source": "DPE"}
 
@@ -127,15 +128,49 @@ if adresse_input:
         st.dataframe(df_final)
 
     with tab2:
-        st.subheader("📊 Données DVF")
+        st.subheader("📄 Données DVF")
         if df_dvf.empty:
-            st.warning("Aucune donnée DVF trouvée pour cette adresse.")
+            st.warning("Aucune donnée DPE trouvée pour ces coordonnées.")
         else:
-            st.dataframe(df_final.loc[df_final['source de donnée'] == 'DVF'])
+            # 1️⃣ Liste des champs utilisés dans df_final avec source DPE
+            champs_utilises_dvf = df_final.loc[df_final["source de donnée"] == "DVF", "champ à remplir"].tolist()
+
+            # 2️⃣ Transformer dpe_coordinates en format vertical
+            df_dvf_display = df_dvf.transpose().reset_index()
+            df_dvf_display.columns = ["champ à remplir", "valeur"]
+            
+             # 3️⃣ Trier pour mettre les champs utilisés en premier
+            df_dvf_display["utilise"] = df_dvf_display["champ à remplir"].isin(champs_utilises_dvf)
+            df_dvf_display = df_dvf_display.sort_values(by="utilise", ascending=False).drop(columns="utilise")
+
+            # 4️⃣ Affichage avec style
+            st.dataframe(
+                df_dvf_display.style.apply(
+                    lambda row: highlight_used_fields(row, champs_utilises_dvf),
+                    axis=1
+                )
+            )
 
     with tab3:
         st.subheader("📄 Données DPE")
         if dpe_coordinates.empty:
             st.warning("Aucune donnée DPE trouvée pour ces coordonnées.")
         else:
-            st.dataframe(df_final.loc[df_final['source de donnée'] == 'DPE'])
+            # 1️⃣ Liste des champs utilisés dans df_final avec source DPE
+            champs_utilises_dpe = df_final.loc[df_final["source de donnée"] == "DPE", "champ à remplir"].tolist()
+
+            # 2️⃣ Transformer dpe_coordinates en format vertical
+            df_dpe_display = dpe_coordinates.transpose().reset_index()
+            df_dpe_display.columns = ["champ à remplir", "valeur"]
+            
+            # 3️⃣ Trier pour mettre les champs utilisés en premier
+            df_dpe_display["utilise"] = df_dpe_display["champ à remplir"].isin(champs_utilises_dpe)
+            df_dpe_display = df_dpe_display.sort_values(by="utilise", ascending=False).drop(columns="utilise")
+
+            # 4️⃣ Affichage avec style
+            st.dataframe(
+                df_dpe_display.style.apply(
+                    lambda row: highlight_used_fields(row, champs_utilises_dpe),
+                    axis=1
+                )
+            )
