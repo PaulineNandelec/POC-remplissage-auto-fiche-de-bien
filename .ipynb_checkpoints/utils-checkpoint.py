@@ -197,6 +197,6 @@ def get_dpe_exact_coordinates(x, y, token: str, size: int = 10):
     except requests.exceptions.RequestException as e:
         return pd.DataFrame([{"error": str(e)}])
     
-# 3️⃣ Fonction de surbrillance : mauve si le champ est dans champs_utilises_dpe
+    
 def highlight_used_fields(row, champs_utilises):
     return ['background-color: #e2d8f3' if row["champ à remplir"] in champs_utilises else '' for _ in row]
