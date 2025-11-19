@@ -69,14 +69,18 @@ if adresse_input:
     # 5. Sélectionner un DVF
     
     if len(df_dvf) > 1:
-        st.write("Plusieurs transactions trouvées, veuillez affiner votre recherche :")
+        # Tolérance de 5 %
+        tolerance = 0.05
 
-        # Étape 1 : choix de la surface
-        choix_date_mutation = st.selectbox(
-            "Date de la mutation :",
-            options=sorted(df_dvf['date_mutation'].dropna().unique())
-        )
-        df_dvf = df_dvf[df_dvf['date_mutation'] == choix_date_mutation]
+        # Bornes min et max
+        min_surface = choix_surface * (1 - tolerance)
+        max_surface = choix_surface * (1 + tolerance)
+
+        # Filtrage
+        df_dvf = df_dvf[
+            (df_dvf['surface_reelle_bati'] >= min_surface) &
+            (df_dvf['surface_reelle_bati'] <= max_surface)
+        ]
 
     # 6. Construire final_data avec DVF + DPE
     final_data = {}
